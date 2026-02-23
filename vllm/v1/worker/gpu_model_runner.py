@@ -6104,6 +6104,21 @@ class GPUModelRunner(
                     self.cross_layers_kv_cache, self.cross_layers_attn_backend
                 )
             else:
+                # Filter out draft model layers - they don't participate in
+                # cross-engine KV transfer (draft KV is generated locally).
+                if self.drafter is not None and (
+                    self.drafter.attn_layer_names
+                    or self.drafter.indexer_layer_names
+                ):
+                    draft_layer_names = set(
+                        self.drafter.attn_layer_names
+                        + self.drafter.indexer_layer_names
+                    )
+                    kv_caches = {
+                        name: tensor
+                        for name, tensor in kv_caches.items()
+                        if name not in draft_layer_names
+                    }
                 kv_transfer_group.register_kv_caches(kv_caches)
             kv_transfer_group.set_host_xfer_buffer_ops(copy_kv_blocks)
 
