@@ -343,6 +343,12 @@ class Scheduler(SchedulerInterface):
         encoder_compute_budget = self.max_num_encoder_input_tokens
         # Spec decode-related.
         scheduled_spec_decode_tokens: dict[str, list[int]] = {}
+        speculative_config = self.vllm_config.speculative_config
+        disable_speculation = (
+            speculative_config is not None
+            and speculative_config.disable_by_batch_size is not None
+            and len(self.running) >= speculative_config.disable_by_batch_size
+        )
 
         # For logging.
         scheduled_timestamp = time.monotonic()
@@ -486,20 +492,25 @@ class Scheduler(SchedulerInterface):
 
             # Speculative decode related.
             if request.spec_token_ids:
-                num_scheduled_spec_tokens = (
-                    num_new_tokens
-                    + request.num_computed_tokens
-                    - request.num_tokens
-                    - request.num_output_placeholders
-                )
-                if num_scheduled_spec_tokens > 0:
-                    spec_token_ids = request.spec_token_ids
-                    if len(spec_token_ids) > num_scheduled_spec_tokens:
-                        spec_token_ids = spec_token_ids[:num_scheduled_spec_tokens]
-                    scheduled_spec_decode_tokens[request.request_id] = spec_token_ids
+                if not disable_speculation:
+                    num_scheduled_spec_tokens = (
+                        num_new_tokens
+                        + request.num_computed_tokens
+                        - request.num_tokens
+                        - request.num_output_placeholders
+                    )
+                    if num_scheduled_spec_tokens > 0:
+                        spec_token_ids = request.spec_token_ids
+                        if len(spec_token_ids) > num_scheduled_spec_tokens:
+                            spec_token_ids = spec_token_ids[
+                                :num_scheduled_spec_tokens
+                            ]
+                        scheduled_spec_decode_tokens[
+                            request.request_id
+                        ] = spec_token_ids
 
-                # New spec tokens will be set in `update_draft_token_ids` before the
-                # next step when applicable.
+                # New spec tokens will be set in `update_draft_token_ids`
+                # before the next step when applicable.
                 request.spec_token_ids = []
 
             # Encoder-related.
