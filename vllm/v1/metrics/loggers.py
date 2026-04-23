@@ -1149,14 +1149,16 @@ class PrometheusStatLogger(AggregateStatLoggerBase):
         self.counter_num_preempted_reqs[engine_idx].inc(
             iteration_stats.num_preempted_reqs
         )
-        self.counter_prompt_tokens[engine_idx].inc(iteration_stats.num_prompt_tokens)
+        self.counter_prompt_tokens[engine_idx].inc(
+            max(0, iteration_stats.num_prompt_tokens)
+        )
         # Labeled prompt token counters by source
         pts = iteration_stats.prompt_token_stats
         for source in PromptTokenStats.ALL_SOURCES:
             self.counter_prompt_tokens_by_source[source][engine_idx].inc(
-                pts.get_by_source(source)
+                max(0, pts.get_by_source(source))
             )
-        self.counter_prompt_tokens_cached[engine_idx].inc(pts.cached_tokens)
+        self.counter_prompt_tokens_cached[engine_idx].inc(max(0, pts.cached_tokens))
         self.counter_generation_tokens[engine_idx].inc(
             iteration_stats.num_generation_tokens
         )
