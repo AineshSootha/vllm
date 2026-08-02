@@ -1772,7 +1772,11 @@ class NixlConnectorWorker:
         now = time.perf_counter()
         while self._reqs_to_send:
             req_id, expires = next(iter(self._reqs_to_send.items()))
-            # Sorted dict, oldest requests are put first so we can exit early.
+            # Ordered by expiry: entries are appended with a monotonically
+            # increasing expiry and re-inserted (not updated in place) when a
+            # heartbeat extends them, so the head is always the soonest to
+            # expire and we can exit early. Any writer that updates an entry's
+            # expiry in place would break this and stall reclamation.
             if now < expires:
                 break
             count = self.consumer_notification_counts_by_req.pop(req_id, 0)
@@ -1855,7 +1859,18 @@ class NixlConnectorWorker:
         for req_id in payload.split(","):
             if req_id in self._reqs_to_send:
                 old = self._reqs_to_send[req_id]
-                self._reqs_to_send[req_id] = max(old, new_expiry)
+                extended = max(old, new_expiry)
+                # Re-insert rather than assign in place: `_reqs_to_send` is a
+                # plain dict, so assigning to an existing key updates the value
+                # but keeps the key's original position. get_finished() relies on
+                # the mapping being ordered by expiry (it inspects only the head
+                # and breaks early), so an in-place update would leave an
+                # extended entry at the front and stall reclamation of every
+                # already-expired request behind it. Deleting first moves the
+                # entry to the back, which is correct because the new expiry is
+                # never earlier than the old one.
+                del self._reqs_to_send[req_id]
+                self._reqs_to_send[req_id] = extended
                 logger.debug(
                     "Heartbeat extended lease for request %s "
                     "by %ds (old_expiry=%.1f, new_expiry=%.1f)",
