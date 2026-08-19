@@ -87,9 +87,25 @@ def is_nixl_available() -> bool:
     return importlib.util.find_spec(pkg) is not None
 
 
+def is_nixl_remote_disconnect_error(error: BaseException) -> bool:
+    """Return whether an exception represents a NIXL remote disconnect."""
+    try:
+        module = importlib.import_module(_get_nixl_module_name("NixlWrapper"))
+    except ImportError:
+        return False
+
+    error_type = getattr(module, "nixlRemoteDisconnectError", None)
+    return (
+        isinstance(error_type, type)
+        and issubclass(error_type, BaseException)
+        and isinstance(error, error_type)
+    )
+
+
 __all__ = [
     "NixlWrapper",
     "nixl_agent_config",
     "nixlXferTelemetry",
     "is_nixl_available",
+    "is_nixl_remote_disconnect_error",
 ]

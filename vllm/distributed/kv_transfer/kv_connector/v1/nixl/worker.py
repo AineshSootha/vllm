@@ -59,7 +59,11 @@ from vllm.distributed.kv_transfer.kv_connector.v1.ssm_conv_transfer_utils import
     MambaConvSplitInfo,
     derive_mamba_conv_split,
 )
-from vllm.distributed.nixl_utils import NixlWrapper, nixl_agent_config
+from vllm.distributed.nixl_utils import (
+    NixlWrapper,
+    is_nixl_remote_disconnect_error,
+    nixl_agent_config,
+)
 from vllm.distributed.parallel_state import (
     get_tensor_model_parallel_rank,
     get_tensor_model_parallel_world_size,
@@ -1698,7 +1702,17 @@ class NixlConnectorWorker:
         to track which workers are done.
         """
         assert self.transfer_topo is not None
-        done_sending = self._get_new_notifs()
+        try:
+            done_sending = self._get_new_notifs()
+        except Exception as error:
+            if not is_nixl_remote_disconnect_error(error):
+                raise
+            logger.warning(
+                "NIXL control completion queue lost a remote endpoint. "
+                "Skipping notification processing until the next poll: %s",
+                error,
+            )
+            done_sending = set()
         done_recving = self._pop_done_transfers(self._recving_transfers)
 
         # Drain queue of requests where handshake or transfer setup failed.

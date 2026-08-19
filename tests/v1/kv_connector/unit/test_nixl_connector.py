@@ -7,6 +7,7 @@ import os
 import tempfile
 import textwrap
 import time
+import types
 import uuid
 from collections import defaultdict
 from typing import Any, cast
@@ -19,6 +20,7 @@ import torch
 
 from vllm import LLM
 from vllm.config import KVTransferConfig, set_current_vllm_config
+from vllm.distributed import nixl_utils
 from vllm.distributed.kv_transfer.kv_connector.utils import (
     KVOutputAggregator,
     TransferTopology,
@@ -562,6 +564,62 @@ class FakeNixlConnectorWorker(NixlConnectorWorker):
             )
             remote_agents[remote_tp_rank] = remote_agent_name
         return remote_agents
+
+
+def _make_get_finished_worker() -> NixlConnectorWorker:
+    worker = object.__new__(NixlConnectorWorker)
+    worker.transfer_topo = object()
+    worker._recving_transfers = {}
+    worker._failed_recv_reqs = queue.Queue()
+    worker._reqs_to_send = {}
+    worker.tp_rank = 0
+    return worker
+
+
+def test_get_finished_ignores_remote_disconnect_notification_error(monkeypatch):
+    class RemoteDisconnectError(Exception):
+        pass
+
+    worker = _make_get_finished_worker()
+    monkeypatch.setattr(
+        nixl_utils.importlib,
+        "import_module",
+        lambda _: types.SimpleNamespace(
+            nixlRemoteDisconnectError=RemoteDisconnectError
+        ),
+    )
+    monkeypatch.setattr(
+        worker,
+        "_get_new_notifs",
+        lambda: (_ for _ in ()).throw(RemoteDisconnectError("peer lost")),
+    )
+
+    assert worker.get_finished() == (set(), set())
+
+
+def test_get_finished_reraises_generic_notification_error(monkeypatch):
+    class RemoteDisconnectError(Exception):
+        pass
+
+    class BackendError(Exception):
+        pass
+
+    worker = _make_get_finished_worker()
+    monkeypatch.setattr(
+        nixl_utils.importlib,
+        "import_module",
+        lambda _: types.SimpleNamespace(
+            nixlRemoteDisconnectError=RemoteDisconnectError
+        ),
+    )
+    monkeypatch.setattr(
+        worker,
+        "_get_new_notifs",
+        lambda: (_ for _ in ()).throw(BackendError("backend failed")),
+    )
+
+    with pytest.raises(BackendError, match="backend failed"):
+        worker.get_finished()
 
 
 class TestNixlHandshake:
