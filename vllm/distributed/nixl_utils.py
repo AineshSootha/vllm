@@ -90,7 +90,9 @@ def is_nixl_available() -> bool:
 def is_nixl_remote_disconnect_error(error: BaseException) -> bool:
     """Return whether an exception represents a NIXL remote disconnect."""
     try:
-        module = importlib.import_module(_get_nixl_module_name("NixlWrapper"))
+        module = importlib.import_module(
+            _get_nixl_module_name("nixlXferTelemetry")
+        )
     except ImportError:
         return False
 

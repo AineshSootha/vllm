@@ -580,13 +580,15 @@ def test_get_finished_ignores_remote_disconnect_notification_error(monkeypatch):
     class RemoteDisconnectError(Exception):
         pass
 
+    def load_bindings_module(name):
+        assert name.endswith("._bindings")
+        return types.SimpleNamespace(nixlRemoteDisconnectError=RemoteDisconnectError)
+
     worker = _make_get_finished_worker()
     monkeypatch.setattr(
         nixl_utils.importlib,
         "import_module",
-        lambda _: types.SimpleNamespace(
-            nixlRemoteDisconnectError=RemoteDisconnectError
-        ),
+        load_bindings_module,
     )
     monkeypatch.setattr(
         worker,
@@ -604,13 +606,15 @@ def test_get_finished_reraises_generic_notification_error(monkeypatch):
     class BackendError(Exception):
         pass
 
+    def load_bindings_module(name):
+        assert name.endswith("._bindings")
+        return types.SimpleNamespace(nixlRemoteDisconnectError=RemoteDisconnectError)
+
     worker = _make_get_finished_worker()
     monkeypatch.setattr(
         nixl_utils.importlib,
         "import_module",
-        lambda _: types.SimpleNamespace(
-            nixlRemoteDisconnectError=RemoteDisconnectError
-        ),
+        load_bindings_module,
     )
     monkeypatch.setattr(
         worker,
